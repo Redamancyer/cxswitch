@@ -86,5 +86,4 @@ CXSwitch 会创建以下额外文件：
 - `assets/AppIcon.png`：打包应用使用的源图标
 - `assets/cxswitch.png`：README 中展示的运行截图
 - `scripts/build-app.sh`：构建并打包 `dist/CXSwitch.app`
-- `scripts/generate-app-icon.swift`：重新生成源图标的脚本
 - `Package.swift`：Swift Package 配置
