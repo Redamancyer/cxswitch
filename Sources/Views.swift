@@ -7,13 +7,11 @@ struct AccountMenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("CXSwitch")
-                        .font(.title3.weight(.semibold))
-                    Text("共享本地会话，仅切换账户")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                Text("CXSwitch")
+                    .font(.title3.weight(.semibold))
+                Text("共享本地会话，仅切换账户")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 if store.isBusy || store.isRefreshingUsage {
                     ProgressView()
@@ -30,7 +28,7 @@ struct AccountMenuView: View {
                 Button("添加账户") {
                     store.addAccount()
                 }
-                .buttonStyle(FeedbackButtonStyle(kind: .prominent))
+                .buttonStyle(FeedbackButtonStyle(kind: .normal))
 
                 Button("更新用量") {
                     store.refreshUsage()
@@ -360,37 +358,46 @@ private struct FeedbackButtonBody: View {
     }
 
     private var foregroundColor: Color {
+        if isHovered && isEnabled {
+            return .white
+        }
         switch kind {
         case .normal:
-            .primary
+            return .primary
         case .prominent:
-            .white
+            return .white
         case .destructive:
-            .red
+            return .red
         }
     }
 
     private var backgroundColor: Color {
+        if isHovered && isEnabled && kind != .destructive && !configuration.isPressed {
+            return Color.accentColor
+        }
         switch kind {
         case .normal:
             if configuration.isPressed { return Color.accentColor.opacity(0.24) }
-            return isHovered ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.12)
+            return Color.secondary.opacity(0.12)
         case .prominent:
             if configuration.isPressed { return Color.accentColor.opacity(0.78) }
-            return isHovered ? Color.accentColor.opacity(0.88) : Color.accentColor
+            return Color.accentColor
         case .destructive:
             if configuration.isPressed { return Color.red.opacity(0.24) }
-            return isHovered ? Color.red.opacity(0.16) : Color.red.opacity(0.10)
+            return isHovered && isEnabled ? Color.red : Color.red.opacity(0.10)
         }
     }
 
     private var borderColor: Color {
+        if isHovered && isEnabled && kind != .destructive {
+            return Color.accentColor.opacity(0.95)
+        }
         switch kind {
         case .normal:
             if configuration.isPressed { return Color.accentColor.opacity(0.60) }
-            return isHovered ? Color.accentColor.opacity(0.50) : Color.secondary.opacity(0.22)
+            return Color.secondary.opacity(0.22)
         case .prominent:
-            return Color.accentColor.opacity(configuration.isPressed || isHovered ? 0.95 : 0.70)
+            return Color.accentColor.opacity(configuration.isPressed ? 0.95 : 0.70)
         case .destructive:
             return Color.red.opacity(configuration.isPressed || isHovered ? 0.70 : 0.35)
         }
