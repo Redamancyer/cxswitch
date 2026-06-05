@@ -254,19 +254,54 @@ private struct UsagePill: View {
     let window: UsageWindowSnapshot?
 
     var body: some View {
-        HStack(spacing: 4) {
-            Text(title)
-                .foregroundStyle(.secondary)
-            Text(remainingText)
-                .fontWeight(.semibold)
-                .foregroundStyle(.primary)
-            Text(resetText)
-                .foregroundStyle(Color.secondary.opacity(0.70))
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(isRowHovered ? Color.gray.opacity(0.26) : Color.secondary.opacity(0.10))
+
+            GeometryReader { proxy in
+                ZStack(alignment: .topLeading) {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.green.opacity(1.0),
+                                    Color.green.opacity(isRowHovered ? 0.86 : 0.76)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+
+                    Capsule()
+                        .fill(Color.white.opacity(isRowHovered ? 0.34 : 0.28))
+                        .frame(height: max(proxy.size.height * 0.38, 1))
+                        .padding(.horizontal, 1)
+                        .padding(.top, 1)
+                }
+                .frame(width: proxy.size.width * progress)
+                .shadow(color: Color.black.opacity(0.16), radius: 1.2, x: 0, y: 1)
+            }
+            .clipShape(Capsule())
+
+            HStack(spacing: 4) {
+                Text(title)
+                    .foregroundStyle(.secondary)
+                Text(remainingText)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+                Text(resetText)
+                    .foregroundStyle(Color.secondary.opacity(0.70))
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 5)
         }
         .font(.subheadline)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 5)
-        .background((isRowHovered ? Color.gray.opacity(0.26) : Color.secondary.opacity(0.10)), in: Capsule())
+        .fixedSize(horizontal: true, vertical: true)
+    }
+
+    private var progress: CGFloat {
+        guard let window else { return 0 }
+        return CGFloat(min(max(window.remainingPercent / 100, 0), 1))
     }
 
     private var remainingText: String {

@@ -51,7 +51,11 @@ final class AccountStore: ObservableObject {
             let identity = try AuthDocument.validate(data)
             let accountID = try self.upsert(data: data, identity: identity, makeActive: false)
             self.statusMessage = "已添加 \(identity.suggestedName)，正在更新用量…"
-            await self.refreshUsage(for: accountID)
+            await self.refreshUsage(
+                for: accountID,
+                successMessage: { "已添加 \($0)，用量已更新" },
+                failureMessage: { "已添加 \($0)，用量更新失败" }
+            )
         }
     }
 
@@ -133,13 +137,18 @@ final class AccountStore: ObservableObject {
         }
     }
 
-    private func refreshUsage(for accountID: UUID) async {
+    private func refreshUsage(
+        for accountID: UUID,
+        successMessage: @escaping (String) -> String,
+        failureMessage: @escaping (String) -> String
+    ) async {
         guard !isRefreshingUsage else { return }
         isRefreshingUsage = true
         lastError = nil
         defer { isRefreshingUsage = false }
 
         guard let index = accounts.firstIndex(where: { $0.id == accountID }) else { return }
+        let displayName = accounts[index].displayName
         let snapshot: AccountUsageSnapshot
 
         do {
@@ -147,7 +156,7 @@ final class AccountStore: ObservableObject {
                 throw CXSwitchError.accountCredentialMissing
             }
             snapshot = try await usageClient.fetch(authData: data)
-            statusMessage = "已添加 \(accounts[index].displayName)，用量已更新"
+            statusMessage = successMessage(displayName)
         } catch {
             snapshot = AccountUsageSnapshot(
                 fiveHour: nil,
@@ -155,7 +164,7 @@ final class AccountStore: ObservableObject {
                 updatedAt: Date(),
                 error: error.localizedDescription
             )
-            statusMessage = "已添加 \(accounts[index].displayName)，用量更新失败"
+            statusMessage = failureMessage(displayName)
         }
 
         accounts[index].usage = snapshot
@@ -169,7 +178,12 @@ final class AccountStore: ObservableObject {
             }
 
             let identity = try await CodexController.testAuthInTemporaryHome(data)
-            self.statusMessage = "测试通过：\(identity.suggestedName)"
+            self.statusMessage = "测试通过：\(identity.suggestedName)，正在更新用量…"
+            await self.refreshUsage(
+                for: account.id,
+                successMessage: { "测试通过：\($0)，用量已更新" },
+                failureMessage: { "测试通过：\($0)，用量更新失败" }
+            )
         }
     }
 
