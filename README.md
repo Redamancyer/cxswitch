@@ -78,6 +78,6 @@ CXSwitch 会创建以下额外文件：
 
 ## 仓库结构
 
-- `Sources/CXSwitch/`：SwiftUI/AppKit 应用源码
+- `Sources/`：SwiftUI/AppKit 应用源码
 - `scripts/build-app.sh`：构建并打包 `dist/CXSwitch.app`
 - `Package.swift`：Swift Package 配置

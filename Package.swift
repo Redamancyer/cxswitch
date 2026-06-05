@@ -13,7 +13,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "CXSwitch",
-            path: "Sources/CXSwitch",
+            path: "Sources",
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Security"),
