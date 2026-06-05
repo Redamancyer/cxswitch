@@ -1,6 +1,30 @@
 import AppKit
 import Foundation
 
+private final class ProcessBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+
+    func set(_ process: Process) {
+        lock.withLock {
+            self.process = process
+        }
+    }
+
+    func clear() {
+        lock.withLock {
+            process = nil
+        }
+    }
+
+    func terminate() {
+        lock.withLock {
+            guard let process, process.isRunning else { return }
+            process.terminate()
+        }
+    }
+}
+
 struct CodexController {
     let fileManager = FileManager.default
 
@@ -169,11 +193,10 @@ struct CodexController {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
-        try process.run()
-        process.waitUntilExit()
+        let output = try await run(process, pipe: pipe)
+        try Task.checkCancellation()
 
         guard process.terminationStatus == 0 else {
-            let output = pipe.fileHandleForReading.readDataToEndOfFile()
             let message = String(decoding: output, as: UTF8.self)
             throw CXSwitchError.processFailed(message.isEmpty ? "登录未完成。" : message)
         }
@@ -213,15 +236,40 @@ struct CodexController {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
-        try process.run()
-        process.waitUntilExit()
+        let output = try await run(process, pipe: pipe)
+        try Task.checkCancellation()
 
         guard process.terminationStatus == 0 else {
-            let output = pipe.fileHandleForReading.readDataToEndOfFile()
             let message = String(decoding: output, as: UTF8.self)
             throw CXSwitchError.processFailed(message.isEmpty ? "账户测试失败。" : message)
         }
 
         return identity
+    }
+
+    private static func run(_ process: Process, pipe: Pipe) async throws -> Data {
+        let box = ProcessBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.set(process)
+                process.terminationHandler = { _ in
+                    let output = pipe.fileHandleForReading.readDataToEndOfFile()
+                    box.clear()
+                    continuation.resume(returning: output)
+                }
+
+                do {
+                    try process.run()
+                    if Task.isCancelled {
+                        box.terminate()
+                    }
+                } catch {
+                    box.clear()
+                    continuation.resume(throwing: error)
+                }
+            }
+        } onCancel: {
+            box.terminate()
+        }
     }
 }

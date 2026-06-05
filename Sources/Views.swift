@@ -24,17 +24,26 @@ struct AccountMenuView: View {
                     store.importCurrentAccount()
                 }
                 .buttonStyle(FeedbackButtonStyle(kind: .normal))
+                .disabled(store.isBusy)
 
                 Button("添加账户") {
                     store.addAccount()
                 }
                 .buttonStyle(FeedbackButtonStyle(kind: .normal))
+                .disabled(store.isBusy)
 
                 Button("更新用量") {
                     store.refreshUsage()
                 }
                 .buttonStyle(FeedbackButtonStyle(kind: .normal))
-                .disabled(store.accounts.isEmpty || store.isRefreshingUsage)
+                .disabled(store.accounts.isEmpty || store.isBusy || store.isRefreshingUsage)
+
+                if store.canCancelBusyOperation {
+                    Button("取消") {
+                        store.cancelCurrentOperation()
+                    }
+                    .buttonStyle(FeedbackButtonStyle(kind: .destructive))
+                }
 
                 Spacer()
 
@@ -43,7 +52,6 @@ struct AccountMenuView: View {
                 }
                 .buttonStyle(FeedbackButtonStyle(kind: .destructive))
             }
-            .disabled(store.isBusy)
 
             Divider()
 
@@ -55,14 +63,14 @@ struct AccountMenuView: View {
                 )
                 .frame(height: 130)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 6) {
-                        ForEach(store.accounts) { account in
-                            AccountRow(account: account)
-                        }
+                if store.accounts.count > 3 {
+                    ScrollView {
+                        accountList
                     }
+                    .frame(height: accountListHeight(for: 3))
+                } else {
+                    accountList
                 }
-                .frame(height: min(CGFloat(store.accounts.count) * 168, 420))
             }
 
             if let status = store.statusMessage {
@@ -84,6 +92,20 @@ struct AccountMenuView: View {
         .onAppear {
             store.reloadState()
         }
+    }
+
+    private var accountList: some View {
+        LazyVStack(spacing: 6) {
+            ForEach(store.accounts) { account in
+                AccountRow(account: account)
+            }
+        }
+    }
+
+    private func accountListHeight(for rowCount: Int) -> CGFloat {
+        let rows = CGFloat(rowCount) * 132
+        let spacing = CGFloat(max(rowCount - 1, 0)) * 6
+        return rows + spacing
     }
 }
 
@@ -190,7 +212,7 @@ private struct AccountRow: View {
     }
 
     private var rowBackground: Color {
-        isHovered ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.10)
+        isHovered ? Color.gray.opacity(0.32) : Color.secondary.opacity(0.10)
     }
 }
 
@@ -244,7 +266,7 @@ private struct UsagePill: View {
         .font(.subheadline)
         .padding(.horizontal, 7)
         .padding(.vertical, 5)
-        .background((isRowHovered ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.10)), in: Capsule())
+        .background((isRowHovered ? Color.gray.opacity(0.26) : Color.secondary.opacity(0.10)), in: Capsule())
     }
 
     private var remainingText: String {

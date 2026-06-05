@@ -37,7 +37,7 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
   <key>CFBundleIdentifier</key>
   <string>com.cxswitch.app</string>
   <key>CFBundleIconFile</key>
-  <string>AppIcon</string>
+  <string>AppIcon.icns</string>
   <key>CFBundleName</key>
   <string>CXSwitch</string>
   <key>CFBundlePackageType</key>
@@ -55,4 +55,5 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
 PLIST
 
 codesign --force --deep --sign - "$APP"
+touch "$APP"
 echo "Built $APP"

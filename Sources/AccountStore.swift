@@ -7,6 +7,7 @@ final class AccountStore: ObservableObject {
     @Published private(set) var activeAccountID: UUID?
     @Published var isBusy = false
     @Published var isRefreshingUsage = false
+    @Published private(set) var canCancelBusyOperation = false
     @Published var statusMessage: String?
     @Published var lastError: String?
 
@@ -14,6 +15,7 @@ final class AccountStore: ObservableObject {
     private let codex = CodexController()
     private let usageClient = UsageClient()
     private let fileManager = FileManager.default
+    private var currentOperationTask: Task<Void, Never>?
 
     private var legacyStateURL: URL {
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -27,7 +29,6 @@ final class AccountStore: ObservableObject {
 
     init() {
         reloadState()
-        refreshUsageOnLaunch()
     }
 
     func reloadState() {
@@ -39,17 +40,18 @@ final class AccountStore: ObservableObject {
         perform("正在导入当前账户…") {
             let data = try self.codex.readCurrentAuth()
             let identity = try AuthDocument.validate(data)
-            try self.upsert(data: data, identity: identity, makeActive: true)
+            _ = try self.upsert(data: data, identity: identity, makeActive: true)
             self.statusMessage = "已导入 \(identity.suggestedName)"
         }
     }
 
     func addAccount() {
-        perform("请在浏览器中完成登录…") {
+        perform("会拉起最近点击的默认浏览器窗口，请在浏览器中完成登陆~", allowsCancellation: true) {
             let data = try await CodexController.loginInTemporaryHome()
             let identity = try AuthDocument.validate(data)
-            try self.upsert(data: data, identity: identity, makeActive: false)
-            self.statusMessage = "已添加 \(identity.suggestedName)"
+            let accountID = try self.upsert(data: data, identity: identity, makeActive: false)
+            self.statusMessage = "已添加 \(identity.suggestedName)，正在更新用量…"
+            await self.refreshUsage(for: accountID)
         }
     }
 
@@ -85,13 +87,6 @@ final class AccountStore: ObservableObject {
 
     func refreshUsage() {
         performUsageRefresh(message: "正在更新所有账户用量…")
-    }
-
-    private func refreshUsageOnLaunch() {
-        Task { @MainActor in
-            guard !accounts.isEmpty else { return }
-            performUsageRefresh(message: "正在刷新账户用量…")
-        }
     }
 
     private func performUsageRefresh(message: String) {
@@ -138,6 +133,35 @@ final class AccountStore: ObservableObject {
         }
     }
 
+    private func refreshUsage(for accountID: UUID) async {
+        guard !isRefreshingUsage else { return }
+        isRefreshingUsage = true
+        lastError = nil
+        defer { isRefreshingUsage = false }
+
+        guard let index = accounts.firstIndex(where: { $0.id == accountID }) else { return }
+        let snapshot: AccountUsageSnapshot
+
+        do {
+            guard let data = try vault.load(for: accountID) else {
+                throw CXSwitchError.accountCredentialMissing
+            }
+            snapshot = try await usageClient.fetch(authData: data)
+            statusMessage = "已添加 \(accounts[index].displayName)，用量已更新"
+        } catch {
+            snapshot = AccountUsageSnapshot(
+                fiveHour: nil,
+                weekly: nil,
+                updatedAt: Date(),
+                error: error.localizedDescription
+            )
+            statusMessage = "已添加 \(accounts[index].displayName)，用量更新失败"
+        }
+
+        accounts[index].usage = snapshot
+        try? saveState()
+    }
+
     func test(_ account: AccountRecord) {
         perform("正在测试 \(account.displayName)…") {
             guard let data = try self.vault.load(for: account.id) else {
@@ -150,7 +174,7 @@ final class AccountStore: ObservableObject {
     }
 
     func reauthenticate(_ account: AccountRecord) {
-        perform("请在浏览器中重新登录 \(account.displayName)…") {
+        perform("请在浏览器中重新登录 \(account.displayName)…", allowsCancellation: true) {
             let data = try await CodexController.loginInTemporaryHome()
             let identity = try AuthDocument.validate(data)
 
@@ -213,29 +237,51 @@ final class AccountStore: ObservableObject {
         NSWorkspace.shared.open(vault.baseDirectory)
     }
 
-    private func perform(_ message: String, operation: @escaping @MainActor () async throws -> Void) {
+    func cancelCurrentOperation() {
+        guard canCancelBusyOperation else { return }
+        statusMessage = "正在取消…"
+        currentOperationTask?.cancel()
+    }
+
+    private func perform(
+        _ message: String,
+        allowsCancellation: Bool = false,
+        operation: @escaping @MainActor () async throws -> Void
+    ) {
         guard !isBusy else { return }
         isBusy = true
+        canCancelBusyOperation = allowsCancellation
         statusMessage = message
         lastError = nil
-        Task {
-            defer { isBusy = false }
+        let task = Task { @MainActor in
+            defer {
+                isBusy = false
+                canCancelBusyOperation = false
+                currentOperationTask = nil
+            }
             do {
+                try Task.checkCancellation()
                 try await operation()
+            } catch is CancellationError {
+                statusMessage = "已取消账号登录！"
+                lastError = nil
             } catch {
                 lastError = error.localizedDescription
                 statusMessage = nil
             }
         }
+        currentOperationTask = task
     }
 
-    private func upsert(data: Data, identity: AuthIdentity, makeActive: Bool) throws {
+    private func upsert(data: Data, identity: AuthIdentity, makeActive: Bool) throws -> UUID {
         if let accountID = identity.accountID,
            let index = accounts.firstIndex(where: { $0.accountID == accountID }) {
             try vault.save(data, for: accounts[index].id)
             accounts[index].email = identity.email
             accounts[index].lastUsedAt = Date()
             if makeActive { activeAccountID = accounts[index].id }
+            try saveState()
+            return accounts[index].id
         } else {
             let account = AccountRecord(
                 displayName: identity.suggestedName,
@@ -245,8 +291,9 @@ final class AccountStore: ObservableObject {
             try vault.save(data, for: account.id)
             accounts.append(account)
             if makeActive { activeAccountID = account.id }
+            try saveState()
+            return account.id
         }
-        try saveState()
     }
 
     private func touch(_ id: UUID) {
