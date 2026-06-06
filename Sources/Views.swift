@@ -88,7 +88,7 @@ struct AccountMenuView: View {
 
         }
         .padding(14)
-        .frame(width: 430)
+        .frame(width: 400)
         .onAppear {
             store.reloadState()
         }
@@ -113,6 +113,8 @@ private struct AccountRow: View {
     @EnvironmentObject private var store: AccountStore
     @State private var isConfirmingSwitch = false
     @State private var isHovered = false
+    @State private var isSettingSubscriptionDate = false
+    @State private var draftSubscriptionDate = Date()
     let account: AccountRecord
 
     var isActive: Bool { store.activeAccountID == account.id }
@@ -193,6 +195,31 @@ private struct AccountRow: View {
                 .disabled(store.isBusy || isActive)
 
                 Spacer()
+
+                Text("订阅到期：")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Button(subscriptionExpirationText) {
+                    draftSubscriptionDate = account.subscriptionExpiresAt ?? Date()
+                    isSettingSubscriptionDate = true
+                }
+                .buttonStyle(FeedbackButtonStyle(kind: .normal))
+                .controlSize(.small)
+                .popover(isPresented: $isSettingSubscriptionDate) {
+                    SubscriptionExpirationEditor(
+                        date: $draftSubscriptionDate,
+                        hasExistingDate: account.subscriptionExpiresAt != nil,
+                        onClear: {
+                            store.setSubscriptionExpiration(for: account, to: nil)
+                            isSettingSubscriptionDate = false
+                        },
+                        onSave: {
+                            store.setSubscriptionExpiration(for: account, to: draftSubscriptionDate)
+                            isSettingSubscriptionDate = false
+                        }
+                    )
+                }
             }
         }
         .padding(9)
@@ -214,6 +241,42 @@ private struct AccountRow: View {
     private var rowBackground: Color {
         isHovered ? Color.gray.opacity(0.32) : Color.secondary.opacity(0.10)
     }
+
+    private var subscriptionExpirationText: String {
+        guard let date = account.subscriptionExpiresAt else { return "----/--/--" }
+        return formatSubscriptionDate(date)
+    }
+}
+
+private struct SubscriptionExpirationEditor: View {
+    @Binding var date: Date
+    let hasExistingDate: Bool
+    let onClear: () -> Void
+    let onSave: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DatePicker("订阅到期", selection: $date, displayedComponents: .date)
+                .datePickerStyle(.graphical)
+
+            HStack {
+                Button("清空") {
+                    onClear()
+                }
+                .buttonStyle(FeedbackButtonStyle(kind: .normal))
+                .disabled(!hasExistingDate)
+
+                Spacer()
+
+                Button("完成") {
+                    onSave()
+                }
+                .buttonStyle(FeedbackButtonStyle(kind: .prominent))
+            }
+        }
+        .padding(12)
+        .frame(width: 280)
+    }
 }
 
 private struct UsageSummaryView: View {
@@ -230,8 +293,9 @@ private struct UsageSummaryView: View {
             } else if let usage {
                 HStack(spacing: 8) {
                     UsagePill(title: "5小时", window: usage.fiveHour)
+                        .frame(width: 150)
                     UsagePill(title: "每周", window: usage.weekly)
-                    Spacer()
+                        .frame(maxWidth: .infinity)
                 }
 
             } else {
@@ -274,12 +338,12 @@ private struct UsagePill: View {
 
                     Capsule()
                         .fill(Color.white.opacity(isRowHovered ? 0.34 : 0.28))
-                        .frame(height: max(proxy.size.height * 0.38, 1))
+                        .frame(height: max(proxy.size.height * 0.22, 1))
                         .padding(.horizontal, 1)
                         .padding(.top, 1)
                 }
                 .frame(width: proxy.size.width * progress)
-                .shadow(color: Color.black.opacity(0.16), radius: 1.2, x: 0, y: 1)
+                .shadow(color: Color.black.opacity(0.10), radius: 0.8, x: 0, y: 0.6)
             }
             .clipShape(Capsule())
 
@@ -293,10 +357,10 @@ private struct UsagePill: View {
                     .foregroundStyle(Color.secondary.opacity(0.70))
             }
             .padding(.horizontal, 7)
-            .padding(.vertical, 5)
+            .padding(.vertical, 2)
         }
         .font(.subheadline)
-        .fixedSize(horizontal: true, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var progress: CGFloat {
@@ -320,6 +384,14 @@ private func formatShortTime(_ date: Date) -> String {
     formatter.locale = .current
     formatter.dateStyle = Calendar.current.isDateInToday(date) ? .none : .short
     formatter.timeStyle = .short
+    return formatter.string(from: date)
+}
+
+private func formatSubscriptionDate(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = .current
+    formatter.dateStyle = .short
+    formatter.timeStyle = .none
     return formatter.string(from: date)
 }
 

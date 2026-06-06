@@ -228,6 +228,12 @@ final class AccountStore: ObservableObject {
         try? saveState()
     }
 
+    func setSubscriptionExpiration(for account: AccountRecord, to date: Date?) {
+        guard let index = accounts.firstIndex(where: { $0.id == account.id }) else { return }
+        accounts[index].subscriptionExpiresAt = date
+        try? saveState()
+    }
+
     func remove(_ account: AccountRecord) {
         guard account.id != activeAccountID else {
             lastError = "不能删除当前激活账户。请先切换到其他账户。"

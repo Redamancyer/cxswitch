@@ -8,6 +8,7 @@ struct AccountRecord: Codable, Identifiable, Equatable, Sendable {
     var createdAt: Date
     var lastUsedAt: Date
     var usage: AccountUsageSnapshot?
+    var subscriptionExpiresAt: Date?
 
     init(
         id: UUID = UUID(),
@@ -16,7 +17,8 @@ struct AccountRecord: Codable, Identifiable, Equatable, Sendable {
         accountID: String?,
         createdAt: Date = Date(),
         lastUsedAt: Date = Date(),
-        usage: AccountUsageSnapshot? = nil
+        usage: AccountUsageSnapshot? = nil,
+        subscriptionExpiresAt: Date? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -25,6 +27,7 @@ struct AccountRecord: Codable, Identifiable, Equatable, Sendable {
         self.createdAt = createdAt
         self.lastUsedAt = lastUsedAt
         self.usage = usage
+        self.subscriptionExpiresAt = subscriptionExpiresAt
     }
 }
 
