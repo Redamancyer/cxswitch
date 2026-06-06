@@ -8,6 +8,7 @@ final class AccountStore: ObservableObject {
     @Published var isBusy = false
     @Published var isRefreshingUsage = false
     @Published private(set) var canCancelBusyOperation = false
+    @Published private(set) var showsAccountActions = true
     @Published var statusMessage: String?
     @Published var lastError: String?
 
@@ -28,6 +29,7 @@ final class AccountStore: ObservableObject {
     }
 
     init() {
+        loadPreferences()
         reloadState()
     }
 
@@ -43,6 +45,25 @@ final class AccountStore: ObservableObject {
             _ = try self.upsert(data: data, identity: identity, makeActive: true)
             self.statusMessage = "已导入 \(identity.suggestedName)"
         }
+    }
+
+    func hasUnrecordedCurrentCodexLogin() -> Bool {
+        guard
+            let data = try? codex.readCurrentAuth(),
+            let identity = try? AuthDocument.validate(data)
+        else { return false }
+
+        if let accountID = identity.accountID,
+           accounts.contains(where: { $0.accountID == accountID }) {
+            return false
+        }
+
+        if let email = identity.email,
+           accounts.contains(where: { $0.email == email }) {
+            return false
+        }
+
+        return true
     }
 
     func addAccount() {
@@ -234,6 +255,11 @@ final class AccountStore: ObservableObject {
         try? saveState()
     }
 
+    func toggleAccountActionsVisibility() {
+        showsAccountActions.toggle()
+        savePreferences()
+    }
+
     func remove(_ account: AccountRecord) {
         guard account.id != activeAccountID else {
             lastError = "不能删除当前激活账户。请先切换到其他账户。"
@@ -355,5 +381,16 @@ final class AccountStore: ObservableObject {
     private func saveState() throws {
         let state = PersistedState(accounts: accounts, activeAccountID: activeAccountID)
         try vault.saveState(state)
+    }
+
+    private func loadPreferences() {
+        let preferences = (try? vault.loadPreferences()) ?? UserPreferences.defaultValue
+        showsAccountActions = preferences.showsAccountActions
+        try? vault.savePreferences(preferences)
+    }
+
+    private func savePreferences() {
+        let preferences = UserPreferences(showsAccountActions: showsAccountActions)
+        try? vault.savePreferences(preferences)
     }
 }

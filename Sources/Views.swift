@@ -3,6 +3,7 @@ import SwiftUI
 
 struct AccountMenuView: View {
     @EnvironmentObject private var store: AccountStore
+    @State private var isConfirmingCurrentAccountImport = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -20,14 +21,12 @@ struct AccountMenuView: View {
             }
 
             HStack(spacing: 8) {
-                Button("导入当前账户") {
-                    store.importCurrentAccount()
-                }
-                .buttonStyle(FeedbackButtonStyle(kind: .normal))
-                .disabled(store.isBusy)
-
                 Button("添加账户") {
-                    store.addAccount()
+                    if store.hasUnrecordedCurrentCodexLogin() {
+                        isConfirmingCurrentAccountImport = true
+                    } else {
+                        store.addAccount()
+                    }
                 }
                 .buttonStyle(FeedbackButtonStyle(kind: .normal))
                 .disabled(store.isBusy)
@@ -38,8 +37,14 @@ struct AccountMenuView: View {
                 .buttonStyle(FeedbackButtonStyle(kind: .normal))
                 .disabled(store.accounts.isEmpty || store.isBusy || store.isRefreshingUsage)
 
+                Button(store.showsAccountActions ? "隐藏操作" : "显示操作") {
+                    store.toggleAccountActionsVisibility()
+                }
+                .buttonStyle(FeedbackButtonStyle(kind: .normal))
+                .disabled(store.accounts.isEmpty)
+
                 if store.canCancelBusyOperation {
-                    Button("取消") {
+                    Button("取消登陆") {
                         store.cancelCurrentOperation()
                     }
                     .buttonStyle(FeedbackButtonStyle(kind: .destructive))
@@ -51,6 +56,7 @@ struct AccountMenuView: View {
                     NSApplication.shared.terminate(nil)
                 }
                 .buttonStyle(FeedbackButtonStyle(kind: .destructive))
+                .disabled(store.isBusy)
             }
 
             Divider()
@@ -59,15 +65,15 @@ struct AccountMenuView: View {
                 ContentUnavailableView(
                     "尚未添加账户",
                     systemImage: "person.crop.circle.badge.plus",
-                    description: Text("先导入当前 Codex 账户，再添加其他账户。")
+                    description: Text("点击“添加账户”，可以导入当前 Codex 账户或添加新账户。")
                 )
                 .frame(height: 130)
             } else {
-                if store.accounts.count > 3 {
-                    ScrollView {
+                if store.accounts.count > 5 {
+                    ScrollView(showsIndicators: false) {
                         accountList
                     }
-                    .frame(height: accountListHeight(for: 3))
+                    .frame(height: accountListHeight(for: 5))
                 } else {
                     accountList
                 }
@@ -92,18 +98,32 @@ struct AccountMenuView: View {
         .onAppear {
             store.reloadState()
         }
+        .alert("检测到当前 Codex 已登录", isPresented: $isConfirmingCurrentAccountImport) {
+            Button("导入当前账户") {
+                store.importCurrentAccount()
+            }
+
+            Button("添加新账户") {
+                store.addAccount()
+            }
+
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("是否导入当前 Codex 账户？")
+        }
     }
 
     private var accountList: some View {
         LazyVStack(spacing: 6) {
             ForEach(store.accounts) { account in
-                AccountRow(account: account)
+                AccountRow(account: account, showsActions: store.showsAccountActions)
             }
         }
     }
 
     private func accountListHeight(for rowCount: Int) -> CGFloat {
-        let rows = CGFloat(rowCount) * 132
+        let rowHeight: CGFloat = store.showsAccountActions ? 132 : 94
+        let rows = CGFloat(rowCount) * rowHeight
         let spacing = CGFloat(max(rowCount - 1, 0)) * 6
         return rows + spacing
     }
@@ -116,6 +136,7 @@ private struct AccountRow: View {
     @State private var isSettingSubscriptionDate = false
     @State private var draftSubscriptionDate = Date()
     let account: AccountRecord
+    let showsActions: Bool
 
     var isActive: Bool { store.activeAccountID == account.id }
 
@@ -172,53 +193,55 @@ private struct AccountRow: View {
             UsageSummaryView(usage: account.usage)
                 .environment(\.isAccountRowHovered, isHovered)
 
-            HStack {
-                Button("测试") {
-                    store.test(account)
-                }
-                .buttonStyle(FeedbackButtonStyle(kind: .normal))
-                .controlSize(.small)
-                .disabled(store.isBusy)
+            if showsActions {
+                HStack {
+                    Button("测试") {
+                        store.test(account)
+                    }
+                    .buttonStyle(FeedbackButtonStyle(kind: .normal))
+                    .controlSize(.small)
+                    .disabled(store.isBusy)
 
-                Button("重新认证") {
-                    store.reauthenticate(account)
-                }
-                .buttonStyle(FeedbackButtonStyle(kind: .normal))
-                .controlSize(.small)
-                .disabled(store.isBusy)
+                    Button("重新认证") {
+                        store.reauthenticate(account)
+                    }
+                    .buttonStyle(FeedbackButtonStyle(kind: .normal))
+                    .controlSize(.small)
+                    .disabled(store.isBusy)
 
-                Button("删除", role: .destructive) {
-                    store.remove(account)
-                }
-                .buttonStyle(FeedbackButtonStyle(kind: .destructive))
-                .controlSize(.small)
-                .disabled(store.isBusy || isActive)
+                    Button("删除", role: .destructive) {
+                        store.remove(account)
+                    }
+                    .buttonStyle(FeedbackButtonStyle(kind: .destructive))
+                    .controlSize(.small)
+                    .disabled(store.isBusy || isActive)
 
-                Spacer()
+                    Spacer()
 
-                Text("订阅到期：")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    Text("订阅到期：")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
-                Button(subscriptionExpirationText) {
-                    draftSubscriptionDate = account.subscriptionExpiresAt ?? Date()
-                    isSettingSubscriptionDate = true
-                }
-                .buttonStyle(FeedbackButtonStyle(kind: .normal))
-                .controlSize(.small)
-                .popover(isPresented: $isSettingSubscriptionDate) {
-                    SubscriptionExpirationEditor(
-                        date: $draftSubscriptionDate,
-                        hasExistingDate: account.subscriptionExpiresAt != nil,
-                        onClear: {
-                            store.setSubscriptionExpiration(for: account, to: nil)
-                            isSettingSubscriptionDate = false
-                        },
-                        onSave: {
-                            store.setSubscriptionExpiration(for: account, to: draftSubscriptionDate)
-                            isSettingSubscriptionDate = false
-                        }
-                    )
+                    Button(subscriptionExpirationText) {
+                        draftSubscriptionDate = account.subscriptionExpiresAt ?? Date()
+                        isSettingSubscriptionDate = true
+                    }
+                    .buttonStyle(FeedbackButtonStyle(kind: .normal))
+                    .controlSize(.small)
+                    .popover(isPresented: $isSettingSubscriptionDate) {
+                        SubscriptionExpirationEditor(
+                            date: $draftSubscriptionDate,
+                            hasExistingDate: account.subscriptionExpiresAt != nil,
+                            onClear: {
+                                store.setSubscriptionExpiration(for: account, to: nil)
+                                isSettingSubscriptionDate = false
+                            },
+                            onSave: {
+                                store.setSubscriptionExpiration(for: account, to: draftSubscriptionDate)
+                                isSettingSubscriptionDate = false
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -293,7 +316,7 @@ private struct UsageSummaryView: View {
             } else if let usage {
                 HStack(spacing: 8) {
                     UsagePill(title: "5小时", window: usage.fiveHour)
-                        .frame(width: 150)
+                        .frame(width: 132)
                     UsagePill(title: "每周", window: usage.weekly)
                         .frame(maxWidth: .infinity)
                 }
@@ -350,17 +373,22 @@ private struct UsagePill: View {
             HStack(spacing: 4) {
                 Text(title)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 Text(remainingText)
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
                 Text(resetText)
                     .foregroundStyle(Color.secondary.opacity(0.70))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .padding(.horizontal, 7)
-            .padding(.vertical, 2)
+            .padding(.vertical, 1)
         }
         .font(.subheadline)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 20, maxHeight: 20, alignment: .leading)
+        .clipped()
     }
 
     private var progress: CGFloat {

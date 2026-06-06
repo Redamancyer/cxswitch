@@ -52,6 +52,12 @@ struct PersistedState: Codable, Sendable {
     static let empty = PersistedState(accounts: [], activeAccountID: nil)
 }
 
+struct UserPreferences: Codable, Sendable {
+    var showsAccountActions: Bool
+
+    static let defaultValue = UserPreferences(showsAccountActions: true)
+}
+
 struct AuthIdentity: Equatable, Sendable {
     let email: String?
     let accountID: String?

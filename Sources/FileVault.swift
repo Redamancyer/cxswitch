@@ -12,6 +12,10 @@ struct FileVault: Sendable {
         baseDirectory.appending(path: "accounts.json")
     }
 
+    var preferencesURL: URL {
+        baseDirectory.appending(path: "preferences.json")
+    }
+
     private var authDirectory: URL {
         baseDirectory.appending(path: "auth", directoryHint: .isDirectory)
     }
@@ -70,6 +74,28 @@ struct FileVault: Sendable {
         guard fileManager.fileExists(atPath: stateURL.path) else { return nil }
         let data = try Data(contentsOf: stateURL)
         return try JSONDecoder().decode(PersistedState.self, from: data)
+    }
+
+    func savePreferences(_ preferences: UserPreferences) throws {
+        try prepare()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(preferences)
+        let temporary = baseDirectory.appending(path: ".preferences.json.tmp")
+        try data.write(to: temporary, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporary.path)
+
+        if fileManager.fileExists(atPath: preferencesURL.path) {
+            _ = try fileManager.replaceItemAt(preferencesURL, withItemAt: temporary)
+        } else {
+            try fileManager.moveItem(at: temporary, to: preferencesURL)
+        }
+    }
+
+    func loadPreferences() throws -> UserPreferences? {
+        guard fileManager.fileExists(atPath: preferencesURL.path) else { return nil }
+        let data = try Data(contentsOf: preferencesURL)
+        return try JSONDecoder().decode(UserPreferences.self, from: data)
     }
 
     private func authURL(for accountID: UUID) -> URL {
